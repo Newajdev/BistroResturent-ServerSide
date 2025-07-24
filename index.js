@@ -36,7 +36,29 @@ async function run() {
             const result = await menuCollection.find(req.body).toArray()
             res.send(result)
         })
+
+        
         // ----------------------------------------------Menu Collection End-----------------------------------------------
+        
+
+        // ----------------------------------------------Cart Collection Start---------------------------------------------
+         const cartCollection = client.db("bistroDB").collection("carts");
+
+         app.get('/cart', async(req, res)=>{
+            const Items = await cartCollection.find({}).toArray();
+            const ItemsArray = Items.map(Item => Item.Item)
+            const qurry = {_id: {$in: ItemsArray} }
+            const result = await menuCollection.find(qurry).toArray()
+            res.send(result)
+         })
+
+         app.post('/cart', async(req, res)=>{
+            const CartItem = req.body;
+            const result = await cartCollection.insertOne(CartItem)
+            res.send(result)
+         })
+        // ----------------------------------------------Cart Collection End-----------------------------------------------
+
 
         // ----------------------------------------------Reviews Collection Start---------------------------------------------
         const reviewCollection = client.db("bistroDB").collection("reviews");
