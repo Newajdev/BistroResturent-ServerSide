@@ -32,38 +32,47 @@ async function run() {
         // ----------------------------------------------Menu Collection Start---------------------------------------------
         const menuCollection = client.db("bistroDB").collection("menu");
 
-        app.get('/menu', async(req, res)=>{
+        app.get('/menu', async (req, res) => {
             const result = await menuCollection.find(req.body).toArray()
             res.send(result)
         })
 
-        
+
         // ----------------------------------------------Menu Collection End-----------------------------------------------
-        
+
 
         // ----------------------------------------------Cart Collection Start---------------------------------------------
-         const cartCollection = client.db("bistroDB").collection("carts");
+        const cartCollection = client.db("bistroDB").collection("carts");
 
-         app.get('/cart', async(req, res)=>{
-            const Items = await cartCollection.find({}).toArray();
-            const ItemsArray = Items.map(Item => Item.Item)
-            const qurry = {_id: {$in: ItemsArray} }
+        app.get('/cart', async (req, res) => {
+            const email = req.query.UserEmail;
+            if (!email) {
+                return res.status(400).send({ message: 'Email query is required' });
+            }
+            const Equarry = { UserEmail: email }
+
+            const CartItemsByUser = await cartCollection.find(Equarry).toArray()
+            const CartItems = CartItemsByUser.map(Item => Item.Item)
+
+            const qurry = { _id: { $in: CartItems } }
             const result = await menuCollection.find(qurry).toArray()
             res.send(result)
-         })
 
-         app.post('/cart', async(req, res)=>{
+
+        })
+
+        app.post('/cart', async (req, res) => {
             const CartItem = req.body;
             const result = await cartCollection.insertOne(CartItem)
             res.send(result)
-         })
+        })
         // ----------------------------------------------Cart Collection End-----------------------------------------------
 
 
         // ----------------------------------------------Reviews Collection Start---------------------------------------------
         const reviewCollection = client.db("bistroDB").collection("reviews");
 
-        app.get('/reviews', async(req, res)=>{
+        app.get('/reviews', async (req, res) => {
             const result = await reviewCollection.find(req.body).toArray()
             res.send(result)
         })
