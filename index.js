@@ -42,13 +42,22 @@ async function run() {
         // ----------------------------------------------user Collection Start---------------------------------------------
         const userCollection = client.db("bistroDB").collection("users");
 
-        app.get('/user', async (req, res) => {
-            const result = await userCollection.find(req.body).toArray()
+        app.get('/users', async (req, res) => {
+            const result = await userCollection.find(req.body).toArray();
             res.send(result)
         })
-        app.post('/user', async (req, res) => {
-            const result = await userCollection.insertOne(req.body).toArray()
-            res.send(result)
+        app.post('/users', async (req, res) => {
+            const userInfo = req.body
+
+            const query = {Email: userInfo.Email}
+            const exitingEmail = await userCollection.findOne(query)
+
+            if(exitingEmail){
+                return res.send({message:'Email Aready Exists'})
+            }
+
+            const result = await userCollection.insertOne(userInfo)
+            res.send(result);
         })
 
 
