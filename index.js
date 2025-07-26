@@ -11,7 +11,7 @@ app.use(express.json());
 
 // .......................................MongoDB Start.......................................................................
 
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 const uri = `mongodb+srv://${process.env.USER_ID}:${process.env.USER_PASS}@cluster0.x1smjlm.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -39,31 +39,94 @@ async function run() {
 
 
         // ----------------------------------------------Menu Collection End-----------------------------------------------
+        // ----------------------------------------------user Collection Start---------------------------------------------
+        const userCollection = client.db("bistroDB").collection("users");
+
+        app.get('/user', async (req, res) => {
+            const result = await userCollection.find(req.body).toArray()
+            res.send(result)
+        })
+        app.post('/user', async (req, res) => {
+            const result = await userCollection.insertOne(req.body).toArray()
+            res.send(result)
+        })
+
+
+        // ----------------------------------------------user Collection End-----------------------------------------------
 
 
         // ----------------------------------------------Cart Collection Start---------------------------------------------
         const cartCollection = client.db("bistroDB").collection("carts");
 
+        app.get('/carts', async (req, res) => {
+            const result = await cartCollection.find(req.body).toArray()
+            res.send(result)
+        })
+
+
         app.get('/cart', async (req, res) => {
             const email = req.query.UserEmail;
+            
             if (!email) {
                 return res.status(400).send({ message: 'Email query is required' });
             }
-            const Equarry = { UserEmail: email }
 
-            const CartItemsByUser = await cartCollection.find(Equarry).toArray()
-            const CartItems = CartItemsByUser.map(Item => Item.Item)
 
-            const qurry = { _id: { $in: CartItems } }
-            const result = await menuCollection.find(qurry).toArray()
-            res.send(result)
+            try {
+                // Step 2: Find all cart items for the user
+                const cartItems = await cartCollection.find({ UserEmail: email }).toArray();
+                
+
+                // Step 3: Extract all item ObjectIds from cart
+                const itemIds = cartItems
+                    .filter(item => ObjectId.isValid(item.Item))
+                    .map(item => new ObjectId(item.Item));
+                    
+
+                // Step 4: Get menu items using the IDs
+                const menuItems = await menuCollection.find({ _id: { $in: itemIds } }).toArray();
+                
+
+                // Step 5: Merge quantity with menu item details
+                const result = menuItems.map(menuItem => {
+                    const matchingCartItem = cartItems.find(cartItem => cartItem.Item === menuItem._id.toString());
+                    return {
+                        ...menuItem,
+                        quantity: matchingCartItem?.quantity || 1
+                    };
+                });
+
+                res.send(result);
+            } catch (error) {
+                console.error('Error fetching cart items:', error);
+                res.status(500).send({ message: 'Internal server error' });
+            }
 
 
         })
 
+        app.delete('/carts/:Item', async (req, res) => {
+            const ItemId = req.params.Item;
+            const query = {Item: ItemId }
+            console.log(query);
+            
+                       
+            // const result = await cartCollection.find(query).toArray
+            // const Item = req.params.id;
+            // const filter = { Item: Item }
+            const result = await cartCollection.deleteOne(query)
+            res.send(result)
+        })
+
         app.post('/cart', async (req, res) => {
-            const CartItem = req.body;
-            const result = await cartCollection.insertOne(CartItem)
+            const {UserEmail , Item} = req.body;
+            const CheckItems = await cartCollection.findOne({UserEmail , Item})
+            if(CheckItems){
+                const update = await cartCollection.updateOne({UserEmail , Item}, {$inc: {quantity: 1}})
+                return res.send(update)
+            }
+
+            const result = await cartCollection.insertOne({UserEmail , Item, quantity: 1 }) 
             res.send(result)
         })
         // ----------------------------------------------Cart Collection End-----------------------------------------------
