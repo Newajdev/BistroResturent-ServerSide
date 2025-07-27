@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 require('dotenv').config()
 const app = express();
 const port = process.env.PORT || 5000;
@@ -24,45 +25,103 @@ const client = new MongoClient(uri, {
     }
 });
 
+
+
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
         await client.connect();
-
         // ----------------------------------------------Menu Collection Start---------------------------------------------
+
         const menuCollection = client.db("bistroDB").collection("menu");
+        const cartCollection = client.db("bistroDB").collection("carts");
+        const userCollection = client.db("bistroDB").collection("users");
+        const reviewCollection = client.db("bistroDB").collection("reviews");
+
 
         app.get('/menu', async (req, res) => {
             const result = await menuCollection.find(req.body).toArray()
             res.send(result)
         })
 
-
         // ----------------------------------------------Menu Collection End-----------------------------------------------
-        // ----------------------------------------------user Collection Start---------------------------------------------
-        const userCollection = client.db("bistroDB").collection("users");
+        // ----------------------------------------------Jwt Start---------------------------------------------
 
-        app.get('/users', async (req, res) => {
-            const result = await userCollection.find(req.body).toArray();
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCES_SECRET_TOKEN, { expiresIn: '1h' });
+            res.send({ token })
+        })
+
+        // ============================================== Custom Middlewares ===============================================
+        const verifyToken = (req, res, next) => {
+            if (!req.headers.authorization) {
+                return res.status(401).send({ message: 'forbidden access' })
+            }
+            const token = req.headers.authorization.split(' ')[1];
+            jwt.verify(token, process.env.ACCES_SECRET_TOKEN, (err, decoded) => {
+                if (err) {
+                    return res.status(401).send({ message: 'forbidden access' })
+                }
+                req.decoded = decoded;
+                next()
+
+            })
+        }
+
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded.email
+            const query = { Email: email }
+            const user = await userCollection.findOne(query);
+            const isAdmin = user?.userPosition === 'admin';
+            if (!isAdmin) {
+                return res.status(403).send({ message: 'forbidden access' })
+            }
+            next()
+        }
+        // ============================================== Custom Middlewares ===============================================
+
+
+        // ----------------------------------------------Jwt End-----------------------------------------------
+
+        // ----------------------------------------------user Collection Start---------------------------------------------
+        
+
+        app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
+            const result = await userCollection.find().toArray();
             res.send(result)
         })
+
+        app.get('/users/admin/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            if (email !== req.decoded.email) {
+                return res.status(403).send({ message: 'unauthorized access' })
+            }
+
+            const query = { Email: { $regex: `^${email}$` } };
+            const user = await userCollection.findOne(query)
+            const admin = user?.userPosition
+            res.send({ admin });
+        })
+
+
         app.post('/users', async (req, res) => {
             const userInfo = req.body
 
-            const query = {Email: userInfo.Email}
+            const query = { Email: userInfo.Email }
             const exitingEmail = await userCollection.findOne(query)
 
-            if(exitingEmail){
-                return res.send({message:'Email Aready Exists'})
+            if (exitingEmail) {
+                return res.send({ message: 'Email Aready Exists' })
             }
 
             const result = await userCollection.insertOne(userInfo)
             res.send(result);
         })
-        app.patch('/users/:id', async(req, res)=>{
+        app.patch('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id
-            const filter = {_id: new ObjectId(id)}
-            
+            const filter = { _id: new ObjectId(id) }
+
             const updatePosition = {
                 $set: {
                     userPosition: 'admin'
@@ -72,9 +131,9 @@ async function run() {
             res.send(result)
         })
 
-        app.delete('/users/:id', async(req, res) =>{
+        app.delete('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
-            const query ={_id: new ObjectId(id)}
+            const query = { _id: new ObjectId(id) }
             const result = await userCollection.deleteOne(query)
             res.send(result)
         })
@@ -84,7 +143,7 @@ async function run() {
 
 
         // ----------------------------------------------Cart Collection Start---------------------------------------------
-        const cartCollection = client.db("bistroDB").collection("carts");
+        
 
         app.get('/carts', async (req, res) => {
             const result = await cartCollection.find(req.body).toArray()
@@ -94,7 +153,7 @@ async function run() {
 
         app.get('/cart', async (req, res) => {
             const email = req.query.UserEmail;
-            
+
             if (!email) {
                 return res.status(400).send({ message: 'Email query is required' });
             }
@@ -103,17 +162,17 @@ async function run() {
             try {
                 // Step 2: Find all cart items for the user
                 const cartItems = await cartCollection.find({ UserEmail: email }).toArray();
-                
+
 
                 // Step 3: Extract all item ObjectIds from cart
                 const itemIds = cartItems
                     .filter(item => ObjectId.isValid(item.Item))
                     .map(item => new ObjectId(item.Item));
-                    
+
 
                 // Step 4: Get menu items using the IDs
                 const menuItems = await menuCollection.find({ _id: { $in: itemIds } }).toArray();
-                
+
 
                 // Step 5: Merge quantity with menu item details
                 const result = menuItems.map(menuItem => {
@@ -135,10 +194,10 @@ async function run() {
 
         app.delete('/carts/:Item', async (req, res) => {
             const ItemId = req.params.Item;
-            const query = {Item: ItemId }
+            const query = { Item: ItemId }
             console.log(query);
-            
-                       
+
+
             // const result = await cartCollection.find(query).toArray
             // const Item = req.params.id;
             // const filter = { Item: Item }
@@ -147,21 +206,20 @@ async function run() {
         })
 
         app.post('/cart', async (req, res) => {
-            const {UserEmail , Item} = req.body;
-            const CheckItems = await cartCollection.findOne({UserEmail , Item})
-            if(CheckItems){
-                const update = await cartCollection.updateOne({UserEmail , Item}, {$inc: {quantity: 1}})
+            const { UserEmail, Item } = req.body;
+            const CheckItems = await cartCollection.findOne({ UserEmail, Item })
+            if (CheckItems) {
+                const update = await cartCollection.updateOne({ UserEmail, Item }, { $inc: { quantity: 1 } })
                 return res.send(update)
             }
 
-            const result = await cartCollection.insertOne({UserEmail , Item, quantity: 1 }) 
+            const result = await cartCollection.insertOne({ UserEmail, Item, quantity: 1 })
             res.send(result)
         })
         // ----------------------------------------------Cart Collection End-----------------------------------------------
 
 
         // ----------------------------------------------Reviews Collection Start---------------------------------------------
-        const reviewCollection = client.db("bistroDB").collection("reviews");
 
         app.get('/reviews', async (req, res) => {
             const result = await reviewCollection.find(req.body).toArray()
