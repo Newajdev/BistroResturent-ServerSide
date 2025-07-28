@@ -91,6 +91,10 @@ async function run() {
             const result = await userCollection.find().toArray();
             res.send(result)
         })
+        app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
+            const result = await userCollection.find().toArray();
+            res.send(result)
+        })
 
         app.get('/users/admin/:email', verifyToken, async (req, res) => {
             const email = req.params.email;
