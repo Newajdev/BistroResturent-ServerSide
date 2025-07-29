@@ -37,22 +37,6 @@ async function run() {
         const cartCollection = client.db("bistroDB").collection("carts");
         const userCollection = client.db("bistroDB").collection("users");
         const reviewCollection = client.db("bistroDB").collection("reviews");
-
-
-        app.get('/menu', async (req, res) => {
-            const result = await menuCollection.find(req.body).toArray()
-            res.send(result)
-        })
-
-        // ----------------------------------------------Menu Collection End-----------------------------------------------
-        // ----------------------------------------------Jwt Start---------------------------------------------
-
-        app.post('/jwt', async (req, res) => {
-            const user = req.body;
-            const token = jwt.sign(user, process.env.ACCES_SECRET_TOKEN, { expiresIn: '1h' });
-            res.send({ token })
-        })
-
         // ============================================== Custom Middlewares ===============================================
         const verifyToken = (req, res, next) => {
             if (!req.headers.authorization) {
@@ -82,6 +66,27 @@ async function run() {
         // ============================================== Custom Middlewares ===============================================
 
 
+        app.get('/menu', async (req, res) => {
+            const result = await menuCollection.find(req.body).toArray()
+            res.send(result)
+        })
+        app.post ('/menu', verifyToken, verifyAdmin, async(req, res)=>{
+            const result = await menuCollection.insertOne(req.body)
+            res.send(result)
+        })
+
+        // ----------------------------------------------Menu Collection End-----------------------------------------------
+        // ----------------------------------------------Jwt Start---------------------------------------------
+
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCES_SECRET_TOKEN, { expiresIn: '1h' });
+            res.send({ token })
+        })
+
+        
+
+
         // ----------------------------------------------Jwt End-----------------------------------------------
 
         // ----------------------------------------------user Collection Start---------------------------------------------
@@ -91,10 +96,7 @@ async function run() {
             const result = await userCollection.find().toArray();
             res.send(result)
         })
-        app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
-            const result = await userCollection.find().toArray();
-            res.send(result)
-        })
+        
 
         app.get('/users/admin/:email', verifyToken, async (req, res) => {
             const email = req.params.email;
