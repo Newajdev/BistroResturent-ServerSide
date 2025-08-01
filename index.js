@@ -84,6 +84,12 @@ async function run() {
             const result = await menuCollection.find(req.body).toArray()    
             res.send(result)
         })
+        app.get('/menu/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = {_id:  new ObjectId(id)}
+            const result = await menuCollection.findOne(query);   
+            res.send(result)
+        })
         app.post ('/menu', verifyToken, verifyAdmin, async(req, res)=>{
             const result = await menuCollection.insertOne(req.body)
             res.send(result)
@@ -98,6 +104,23 @@ async function run() {
             res.send(result)
             
         })
+
+        app.patch('/menu/update/:id', verifyToken, verifyAdmin, async(req, res) =>{
+            const id = req.params.id;
+            const filter = {_id: new ObjectId(id)}
+            const update = {
+                $set: {
+                    name : req.body.name ,
+                    recipe: req.body.recipe ,
+                    image : req.body.image ,
+                    category: req.body.category ,
+                    price: req.body.price
+                }
+            }
+            const result = await menuCollection.updateOne(filter, update)
+            res.send(result);
+        })
+
         // ----------------------------------------------Menu Collection End-----------------------------------------------
 
 
