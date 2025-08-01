@@ -31,12 +31,13 @@ async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
         await client.connect();
-        // ----------------------------------------------Menu Collection Start---------------------------------------------
+
 
         const menuCollection = client.db("bistroDB").collection("menu");
         const cartCollection = client.db("bistroDB").collection("carts");
         const userCollection = client.db("bistroDB").collection("users");
         const reviewCollection = client.db("bistroDB").collection("reviews");
+
         // ============================================== Custom Middlewares ===============================================
         const verifyToken = (req, res, next) => {
             if (!req.headers.authorization) {
@@ -65,17 +66,6 @@ async function run() {
         }
         // ============================================== Custom Middlewares ===============================================
 
-
-        app.get('/menu', async (req, res) => {
-            const result = await menuCollection.find(req.body).toArray()
-            res.send(result)
-        })
-        app.post ('/menu', verifyToken, verifyAdmin, async(req, res)=>{
-            const result = await menuCollection.insertOne(req.body)
-            res.send(result)
-        })
-
-        // ----------------------------------------------Menu Collection End-----------------------------------------------
         // ----------------------------------------------Jwt Start---------------------------------------------
 
         app.post('/jwt', async (req, res) => {
@@ -88,6 +78,28 @@ async function run() {
 
 
         // ----------------------------------------------Jwt End-----------------------------------------------
+
+        // ----------------------------------------------Menu Collection Start---------------------------------------------
+        app.get('/menu', async (req, res) => {
+            const result = await menuCollection.find(req.body).toArray()    
+            res.send(result)
+        })
+        app.post ('/menu', verifyToken, verifyAdmin, async(req, res)=>{
+            const result = await menuCollection.insertOne(req.body)
+            res.send(result)
+        })
+        app.delete ('/menu/:id', verifyToken, verifyAdmin, async(req, res)=>{
+
+            const id = req.params.id;
+
+            query = {_id: new ObjectId(id)};
+            const result = await menuCollection.deleteOne(query)
+
+            res.send(result)
+            
+        })
+        // ----------------------------------------------Menu Collection End-----------------------------------------------
+
 
         // ----------------------------------------------user Collection Start---------------------------------------------
         
