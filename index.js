@@ -96,6 +96,7 @@ async function run() {
             const result = await menuCollection.insertOne(req.body)
             res.send(result)
         })
+        
         app.delete('/menu/:id', verifyToken, verifyAdmin, async (req, res) => {
 
             const id = req.params.id;
@@ -194,7 +195,7 @@ async function run() {
         })
         app.get('/carts/:email', async (req, res) => {
             const email = req.params.email
-            const filter = {UserEmail: email}
+            const filter = { UserEmail: email }
             const result = await cartCollection.find(filter).toArray()
             res.send(result)
         })
@@ -286,13 +287,21 @@ async function run() {
             const result = await paymentCollection.insertOne(payment);
             console.log("payment Info: ", payment);
 
-            const query = { _id: {
-                $in :  payment.cartids.map(id => new ObjectId(id))
-            }}
+            const query = {
+                _id: {
+                    $in: payment.cartids.map(id => new ObjectId(id))
+                }
+            }
 
             const deleteResult = await cartCollection.deleteMany(query)
 
-            res.send({result, deleteResult})
+            res.send({ result, deleteResult })
+        })
+        app.get('/payments', async (req, res) => {
+            
+            const result = await paymentCollection.find().toArray()
+
+            res.send(result)
         })
         // ----------------------------------------------Cart Collection End-----------------------------------------------
 
@@ -305,29 +314,70 @@ async function run() {
         })
         // ----------------------------------------------Menu Collection End-----------------------------------------------
         // ========================= Stats or Analytics ========================================
-        app.get('/admin-stats',verifyToken, verifyAdmin, async(req, res) =>{
+        app.get('/admin-stats', verifyToken, verifyAdmin, async (req, res) => {
             const users = await userCollection.estimatedDocumentCount()
             const menuItems = await menuCollection.estimatedDocumentCount()
             const orders = await paymentCollection.estimatedDocumentCount()
-            // this is not the best way
-            // const payment = await paymentCollection.find().toArray()
-            // const revenue = payment.reduce((Total, payment) => Total + payment.price, 0)
 
             const result = await paymentCollection.aggregate([
                 {
                     $group: {
                         _id: null,
-                        TotalRevenue : {
+                        TotalRevenue: {
                             $sum: '$price'
                         }
                     }
                 }
             ]).toArray()
 
-            const revenue = result.length > 0 ?result[0].TotalRevenue:0;
+            const revenue = result.length > 0 ? result[0].TotalRevenue : 0;
 
 
-            res.send({users, menuItems, orders, revenue})
+            res.send({ users, menuItems, orders, revenue })
+        })
+
+        app.get('/order-stats',verifyToken, verifyAdmin, async (req, res) => {
+            const result = await paymentCollection.aggregate([
+                {
+                    $unwind: '$menuItemIds'
+                },
+                {
+                    $lookup: {
+                        from: 'menu',
+                        let: {itemId: '$menuItemIds'},
+                        pipeline:[
+                            {$match:{
+                                $expr:{
+                                    $eq:['$_id', {$toObjectId: '$$itemId'}]
+                                }
+                            }}
+                        ],
+                        as: 'menuItems'
+                    }
+                },
+                {
+                    $unwind: '$menuItems'
+                },
+                {
+                    $group: {
+                        _id: '$menuItems.category',
+                        quantity: {
+                            $sum: 1
+                        },
+                        TotalRevenue: { $sum: '$menuItems.price' }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        category: '$_id',
+                        quantity: 1,
+                        TotalRevenue: 1
+                    }
+                }
+
+            ]).toArray();
+            res.send(result)
         })
 
         // Send a ping to confirm a successful connection
