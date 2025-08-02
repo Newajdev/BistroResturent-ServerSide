@@ -3,6 +3,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 require('dotenv').config()
 const app = express();
+const stripe = require('stripe')(process.env.ACCESS_PAYMENT_SECRECT_STRIPE)
 const port = process.env.PORT || 5000;
 
 // middleware
@@ -37,6 +38,7 @@ async function run() {
         const cartCollection = client.db("bistroDB").collection("carts");
         const userCollection = client.db("bistroDB").collection("users");
         const reviewCollection = client.db("bistroDB").collection("reviews");
+        const paymentCollection = client.db("bistroDB").collection("payment");
 
         // ============================================== Custom Middlewares ===============================================
         const verifyToken = (req, res, next) => {
@@ -74,46 +76,46 @@ async function run() {
             res.send({ token })
         })
 
-        
+
 
 
         // ----------------------------------------------Jwt End-----------------------------------------------
 
         // ----------------------------------------------Menu Collection Start---------------------------------------------
         app.get('/menu', async (req, res) => {
-            const result = await menuCollection.find(req.body).toArray()    
+            const result = await menuCollection.find(req.body).toArray()
             res.send(result)
         })
         app.get('/menu/:id', async (req, res) => {
             const id = req.params.id;
-            const query = {_id:  new ObjectId(id)}
-            const result = await menuCollection.findOne(query);   
+            const query = { _id: new ObjectId(id) }
+            const result = await menuCollection.findOne(query);
             res.send(result)
         })
-        app.post ('/menu', verifyToken, verifyAdmin, async(req, res)=>{
+        app.post('/menu', verifyToken, verifyAdmin, async (req, res) => {
             const result = await menuCollection.insertOne(req.body)
             res.send(result)
         })
-        app.delete ('/menu/:id', verifyToken, verifyAdmin, async(req, res)=>{
+        app.delete('/menu/:id', verifyToken, verifyAdmin, async (req, res) => {
 
             const id = req.params.id;
 
-            query = {_id: new ObjectId(id)};
+            query = { _id: new ObjectId(id) };
             const result = await menuCollection.deleteOne(query)
 
             res.send(result)
-            
+
         })
 
-        app.patch('/menu/update/:id', verifyToken, verifyAdmin, async(req, res) =>{
+        app.patch('/menu/update/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
-            const filter = {_id: new ObjectId(id)}
+            const filter = { _id: new ObjectId(id) }
             const update = {
                 $set: {
-                    name : req.body.name ,
-                    recipe: req.body.recipe ,
-                    image : req.body.image ,
-                    category: req.body.category ,
+                    name: req.body.name,
+                    recipe: req.body.recipe,
+                    image: req.body.image,
+                    category: req.body.category,
                     price: req.body.price
                 }
             }
@@ -125,13 +127,13 @@ async function run() {
 
 
         // ----------------------------------------------user Collection Start---------------------------------------------
-        
+
 
         app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
             const result = await userCollection.find().toArray();
             res.send(result)
         })
-        
+
 
         app.get('/users/admin/:email', verifyToken, async (req, res) => {
             const email = req.params.email;
@@ -184,10 +186,16 @@ async function run() {
 
 
         // ----------------------------------------------Cart Collection Start---------------------------------------------
-        
+
 
         app.get('/carts', async (req, res) => {
             const result = await cartCollection.find(req.body).toArray()
+            res.send(result)
+        })
+        app.get('/carts/:email', async (req, res) => {
+            const email = req.params.email
+            const filter = {UserEmail: email}
+            const result = await cartCollection.find(filter).toArray()
             res.send(result)
         })
 
@@ -257,6 +265,35 @@ async function run() {
             const result = await cartCollection.insertOne({ UserEmail, Item, quantity: 1 })
             res.send(result)
         })
+
+        // =========payment Intent===============
+        app.post('/create-payment-intent', async (req, res) => {
+            const { price } = req.body;
+            const amount = parseInt(price * 100);
+
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: 'usd',
+                payment_method_types: ['card']
+            });
+            res.send({
+                clientSecret: paymentIntent.client_secret
+            })
+        })
+
+        app.post('/payments', async (req, res) => {
+            const payment = req.body;
+            const result = await paymentCollection.insertOne(payment);
+            console.log("payment Info: ", payment);
+
+            const query = { _id: {
+                $in :  payment.cartids.map(id => new ObjectId(id))
+            }}
+
+            const deleteResult = await cartCollection.deleteMany(query)
+
+            res.send({result, deleteResult})
+        })
         // ----------------------------------------------Cart Collection End-----------------------------------------------
 
 
@@ -267,6 +304,31 @@ async function run() {
             res.send(result)
         })
         // ----------------------------------------------Menu Collection End-----------------------------------------------
+        // ========================= Stats or Analytics ========================================
+        app.get('/admin-stats',verifyToken, verifyAdmin, async(req, res) =>{
+            const users = await userCollection.estimatedDocumentCount()
+            const menuItems = await menuCollection.estimatedDocumentCount()
+            const orders = await paymentCollection.estimatedDocumentCount()
+            // this is not the best way
+            // const payment = await paymentCollection.find().toArray()
+            // const revenue = payment.reduce((Total, payment) => Total + payment.price, 0)
+
+            const result = await paymentCollection.aggregate([
+                {
+                    $group: {
+                        _id: null,
+                        TotalRevenue : {
+                            $sum: '$price'
+                        }
+                    }
+                }
+            ]).toArray()
+
+            const revenue = result.length > 0 ?result[0].TotalRevenue:0;
+
+
+            res.send({users, menuItems, orders, revenue})
+        })
 
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
